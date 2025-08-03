@@ -7,40 +7,51 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 st.title("🧹 Pembersih Komentar 'Pas' pada Data PCI")
 
-# Upload file
 uploaded_file = st.file_uploader("📤 Upload file CSV", type="csv")
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
 
-    # Kolom yang digunakan
     kolom_no = 'No'
     kolom_komentar = 'Komentar'
 
-    # Pastikan kolom ada
     if kolom_no in df.columns and kolom_komentar in df.columns:
 
-        komentar_bersih = df[kolom_komentar].fillna('').str.strip().str.lower()
+        df[kolom_komentar] = df[kolom_komentar].fillna('').str.strip().str.lower()
 
-        # Buat mask untuk baris yang akan dihapus
-        mask_hapus = df.duplicated(subset=[kolom_no], keep=False) & (komentar_bersih == 'pas')
-        df_hapus = df[mask_hapus]
-        df_bersih = df[~mask_hapus].reset_index(drop=True)
+        rows_to_keep = []
 
-        st.subheader("📌 Baris yang Akan Dihapus (Komentar = 'pas' dan Duplikat No):")
+        for no_val, group in df.groupby(kolom_no):
+            komentar_values = group[kolom_komentar].tolist()
+
+            if all(k == 'pas' for k in komentar_values):
+                # Semua 'pas', maka simpan satu saja
+                rows_to_keep.append(group.iloc[[0]])
+            else:
+                # Simpan semua yang bukan 'pas'
+                rows_to_keep.append(group[group[kolom_komentar] != 'pas'])
+
+        df_bersih = pd.concat(rows_to_keep).reset_index(drop=True)
+
+        # Cari baris yang dihapus (untuk ditampilkan)
+        index_bersih = set(df_bersih.index)
+        index_asli = set(df.index)
+        indeks_hapus = list(index_asli - index_bersih)
+        df_hapus = df.iloc[indeks_hapus]
+
+        st.subheader("📌 Baris yang Dihapus:")
         st.dataframe(df_hapus)
 
         st.subheader("✅ Data Setelah Dibersihkan:")
         st.dataframe(df_bersih)
 
-        # Hitung info
         st.markdown(f"""
         - Jumlah baris awal: **{len(df)}**
-        - Jumlah baris dihapus: **{mask_hapus.sum()}**
+        - Jumlah baris dihapus: **{len(indeks_hapus)}**
         - Jumlah baris akhir: **{len(df_bersih)}**
         """)
 
-        # Simpan dan buat link download
+        # Buat file untuk diunduh
         csv_buffer = BytesIO()
         df_bersih.to_csv(csv_buffer, index=False)
         csv_buffer.seek(0)
@@ -51,6 +62,7 @@ if uploaded_file:
             file_name="hasil_bersih.csv",
             mime="text/csv"
         )
+
     else:
         st.error("Kolom 'No' dan 'Komentar' tidak ditemukan di file.")
 else:
